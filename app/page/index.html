@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiote</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --ink: #eef1f6;
+    --soft: #a9b3c4;
+    --ok: #7fe0a8;
+    --bad: #ff8a7a;
+    --accent: #ffb547;
+    --line: #2a3140;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; }
+  body { font: 400 22px/1.4 "Liberation Sans", "DejaVu Sans", sans-serif; }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(90deg, rgb(11 13 18 / 0.92) 0, rgb(11 13 18 / 0.75) 640px, rgb(11 13 18 / 0) 900px);
+  }
+  ::selection { background: var(--accent); color: var(--bg); }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  main {
+    position: fixed; z-index: 2; left: 64px; top: 56px; bottom: 56px; width: 640px;
+    display: flex; flex-direction: column; gap: 28px;
+  }
+  h1 { margin: 0; font-size: 64px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
+  #verdict { margin: 0; font-size: 34px; line-height: 1.2; font-weight: 700; text-wrap: balance; }
+  #verdict.ok { color: var(--ok); }
+  #verdict.bad { color: var(--bad); }
+  #detail { margin: -16px 0 0; color: var(--soft); max-width: 34ch; }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 8px 28px; }
+  dt { color: var(--soft); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  dd.ok { color: var(--ok); }
+  dd.no { color: var(--soft); }
+  footer { margin-top: auto; color: var(--soft); font-size: 20px; }
+  footer b { color: var(--ink); font-weight: 700; }
+</style>
+</head>
+<body>
+<canvas id="gpu"></canvas>
+<main>
+  <h1>Quiote</h1>
+  <p id="verdict">Looking for a WebGPU adapter</p>
+  <p id="detail"></p>
+  <dl id="facts"></dl>
+  <footer><b>Home</b> leaves Quiote. Right stick moves the pointer, <b>A</b> clicks.</footer>
+</main>
+<script type="module">
+// Quiote's start page: finds the WebGPU adapter, then proves it end to end:
+// a compute pass moves 65,536 particles and a render pass draws them to this
+// canvas every frame. The window title carries the verdict for scripts
+// (tools/smoke.sh reads it through Sway): "Quiote: WebGPU <vendor> <arch>"
+// or "Quiote: no WebGPU (<reason>)".
+const $ = (id) => document.getElementById(id);
+const facts = $('facts');
+const fact = (k, v, cls = '') => {
+  const dt = document.createElement('dt'); dt.textContent = k;
+  const dd = document.createElement('dd'); dd.textContent = v; if (cls) dd.className = cls;
+  facts.append(dt, dd);
+  return dd;
+};
+const fail = (why, detail) => {
+  $('verdict').textContent = why; $('verdict').className = 'bad';
+  $('detail').textContent = detail;
+  document.title = `Quiote: no WebGPU (${why})`;
+};
+
+const N = 65536;
+const shader = /* wgsl */`
+struct P { pos: vec2f, vel: vec2f };
+struct U { time: f32, dt: f32, aspect: f32, pad: f32 };
+@group(0) @binding(0) var<storage, read_write> ps: array<P>;  // compute
+@group(0) @binding(0) var<storage, read> psr: array<P>;       // vertex stage: storage is read-only there
+@group(0) @binding(1) var<uniform> u: U;
+
+fn hash(n: u32) -> f32 {
+  var x = n * 747796405u + 2891336453u;
+  x = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  return f32((x >> 22u) ^ x) / 4294967295.0;
+}
+
+@compute @workgroup_size(256) fn step(@builtin(global_invocation_id) g: vec3u) {
+  let i = g.x;
+  if (i >= arrayLength(&ps)) { return; }
+  var p = ps[i];
+  // positions are in screen-height units: x runs from -aspect to aspect
+  let a = u.aspect;
+  if (u.time == 0.0) {
+    p.pos = vec2f((hash(i) * 2.0 - 1.0) * a, hash(i + 77777u) * 2.0 - 1.0);
+    p.vel = vec2f(0.0);
+  }
+  // a slow swirl around two centres that circle each other, right of the text
+  let mid = vec2f(0.42 * a, 0.0);
+  let off = vec2f(0.38 * cos(u.time * 0.21), 0.30 * sin(u.time * 0.17));
+  var f = vec2f(0.0);
+  for (var k = 0; k < 2; k++) {
+    let c = mid + select(-off, off, k == 0);
+    let d = p.pos - c;
+    let r2 = dot(d, d) + 0.02;
+    f += vec2f(-d.y, d.x) * (0.06 / r2) * select(-1.0, 1.0, k == 0) - d * (0.02 / r2);
+  }
+  p.vel = p.vel * 0.985 + f * u.dt;
+  p.pos += p.vel * u.dt;
+  if (abs(p.pos.x) > a + 0.1 || abs(p.pos.y) > 1.1) {
+    p.pos = vec2f((hash(i + u32(u.time * 60.0)) * 2.0 - 1.0) * a, hash(i * 3u + 1u) * 2.0 - 1.0);
+    p.vel = vec2f(0.0);
+  }
+  ps[i] = p;
+}
+
+struct V { @builtin(position) pos: vec4f, @location(0) col: vec3f };
+@vertex fn vs(@builtin(vertex_index) v: u32, @builtin(instance_index) i: u32) -> V {
+  let p = psr[i];
+  var corners = array(vec2f(-1, -1), vec2f(1, -1), vec2f(-1, 1), vec2f(1, 1));
+  let corner = corners[v];
+  let size = 0.0022;
+  var o: V;
+  o.pos = vec4f((p.pos.x + corner.x * size) / u.aspect, p.pos.y + corner.y * size, 0.0, 1.0);
+  let s = clamp(length(p.vel) * 1.6, 0.0, 1.0);
+  o.col = mix(vec3f(0.16, 0.30, 0.55), vec3f(1.0, 0.71, 0.28), s);
+  return o;
+}
+@fragment fn fs(i: V) -> @location(0) vec4f { return vec4f(i.col * 0.55, 1.0); }
+`;
+
+async function run() {
+  if (!navigator.gpu) return fail('This browser has no WebGPU', 'navigator.gpu is missing. Quiote turns WebGPU on with its launch flags; was the page opened some other way?');
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  if (!adapter) return fail('No WebGPU adapter', 'Chrome found no usable GPU. Check logs/quiote.log for Vulkan errors.');
+  const info = adapter.info || {};
+  if (info.isFallbackAdapter || info.architecture === 'swiftshader') {
+    fail('Software fallback only', `The adapter is ${info.vendor} ${info.architecture}, the CPU renderer. The Vulkan driver did not load.`);
+  }
+  const need = ['float32-filterable', 'shader-f16', 'timestamp-query'].filter((f) => adapter.features.has(f));
+  const device = await adapter.requestDevice({ requiredFeatures: need });
+  device.lost.then((l) => fail('The GPU device was lost', l.message || String(l.reason)));
+
+  const canvas = $('gpu');
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  const resize = () => {
+    canvas.width = Math.round(innerWidth * devicePixelRatio);
+    canvas.height = Math.round(innerHeight * devicePixelRatio);
+  };
+  resize(); addEventListener('resize', resize);
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+
+  const module = device.createShaderModule({ code: shader });
+  const ps = device.createBuffer({ size: N * 16, usage: GPUBufferUsage.STORAGE });
+  const ub = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const compute = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'step' } });
+  const render = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module, entryPoint: 'vs' },
+    fragment: { module, entryPoint: 'fs', targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } } }] },
+    primitive: { topology: 'triangle-strip' },
+  });
+  const entries = [{ binding: 0, resource: { buffer: ps } }, { binding: 1, resource: { buffer: ub } }];
+  const cbg = device.createBindGroup({ layout: compute.getBindGroupLayout(0), entries });
+  const rbg = device.createBindGroup({ layout: render.getBindGroupLayout(0), entries });
+
+  if (!info.isFallbackAdapter && info.architecture !== 'swiftshader') {
+    $('verdict').textContent = `WebGPU is running on ${info.vendor || 'an unnamed vendor'} ${info.architecture || ''}`.trim();
+    $('verdict').className = 'ok';
+    $('detail').textContent = 'A compute pass moves 65,536 particles and a render pass draws them, every frame.';
+    document.title = `Quiote: WebGPU ${info.vendor} ${info.architecture}`;
+  }
+  for (const f of ['float32-filterable', 'shader-f16', 'timestamp-query']) {
+    fact(f, adapter.features.has(f) ? 'yes' : 'no', adapter.features.has(f) ? 'ok' : 'no');
+  }
+  fact('max buffer', `${Math.round(adapter.limits.maxBufferSize / 2 ** 20)} MiB`);
+  fact('max texture', `${adapter.limits.maxTextureDimension2D} px`);
+  const rate = fact('frame', '-');
+  const pads = fact('gamepads', 'none');
+
+  let t0 = performance.now(), last = t0, frames = 0, acc = 0;
+  const u = new Float32Array(4);
+  const frame = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    u[0] = frames === 0 ? 0 : (now - t0) / 1000; u[1] = dt; u[2] = canvas.width / canvas.height;
+    device.queue.writeBuffer(ub, 0, u);
+    const enc = device.createCommandEncoder();
+    const cp = enc.beginComputePass();
+    cp.setPipeline(compute); cp.setBindGroup(0, cbg); cp.dispatchWorkgroups(N / 256); cp.end();
+    const rp = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0.043, g: 0.051, b: 0.071, a: 1 } }] });
+    rp.setPipeline(render); rp.setBindGroup(0, rbg); rp.draw(4, N); rp.end();
+    device.queue.submit([enc.finish()]);
+    frames++; acc += dt;
+    if (acc >= 1) {
+      rate.textContent = `${(frames / ((now - t0) / 1000)).toFixed(0)} fps at ${canvas.width}×${canvas.height}`;
+      const connected = [...navigator.getGamepads()].filter(Boolean).map((g) => `${g.id.split('(')[0].trim()} (${g.mapping || 'raw'})`);
+      pads.textContent = connected.length ? connected.join(', ') : 'none';
+      acc = 0;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+run().catch((e) => fail('WebGPU failed', String(e && e.message || e)));
+</script>
+</body>
+</html>

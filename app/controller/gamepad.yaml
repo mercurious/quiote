@@ -1,0 +1,71 @@
+# Quiote controller layout for web games and WebGPU apps: the Retroid pad reaches the page
+# as an Xbox 360 controller, which Chrome reports as a "standard" Gamepad
+# API mapping. Home still leaves Quiote (F23 -> Sway -> exit.sh).
+# Use it with QUIOTE_CONTROLLER=gamepad.yaml.
+version: 1
+kind: DeviceProfile
+name: Quiote gamepad
+description: Pad passed through to the page as a standard gamepad
+
+target_devices:
+  - xb360
+  - keyboard
+
+mapping:
+  - name: South
+    source_event: {gamepad: {button: South}}
+    target_events: [{gamepad: {button: South}}]
+  - name: East
+    source_event: {gamepad: {button: East}}
+    target_events: [{gamepad: {button: East}}]
+  - name: North
+    source_event: {gamepad: {button: North}}
+    target_events: [{gamepad: {button: North}}]
+  - name: West
+    source_event: {gamepad: {button: West}}
+    target_events: [{gamepad: {button: West}}]
+  - name: Start
+    source_event: {gamepad: {button: Start}}
+    target_events: [{gamepad: {button: Start}}]
+  - name: Select
+    source_event: {gamepad: {button: Select}}
+    target_events: [{gamepad: {button: Select}}]
+  - name: D-pad up
+    source_event: {gamepad: {button: DPadUp}}
+    target_events: [{gamepad: {button: DPadUp}}]
+  - name: D-pad down
+    source_event: {gamepad: {button: DPadDown}}
+    target_events: [{gamepad: {button: DPadDown}}]
+  - name: D-pad left
+    source_event: {gamepad: {button: DPadLeft}}
+    target_events: [{gamepad: {button: DPadLeft}}]
+  - name: D-pad right
+    source_event: {gamepad: {button: DPadRight}}
+    target_events: [{gamepad: {button: DPadRight}}]
+  - name: L1
+    source_event: {gamepad: {button: LeftBumper}}
+    target_events: [{gamepad: {button: LeftBumper}}]
+  - name: R1
+    source_event: {gamepad: {button: RightBumper}}
+    target_events: [{gamepad: {button: RightBumper}}]
+  - name: L3
+    source_event: {gamepad: {button: LeftStick}}
+    target_events: [{gamepad: {button: LeftStick}}]
+  - name: R3
+    source_event: {gamepad: {button: RightStick}}
+    target_events: [{gamepad: {button: RightStick}}]
+  - name: Left stick
+    source_event: {gamepad: {axis: {name: LeftStick}}}
+    target_events: [{gamepad: {axis: {name: LeftStick}}}]
+  - name: Right stick
+    source_event: {gamepad: {axis: {name: RightStick}}}
+    target_events: [{gamepad: {axis: {name: RightStick}}}]
+  - name: L2
+    source_event: {gamepad: {trigger: {name: LeftTrigger}}}
+    target_events: [{gamepad: {trigger: {name: LeftTrigger}}}]
+  - name: R2
+    source_event: {gamepad: {trigger: {name: RightTrigger}}}
+    target_events: [{gamepad: {trigger: {name: RightTrigger}}}]
+  - name: Exit Quiote
+    source_event: {gamepad: {button: Guide}}
+    target_events: [{keyboard: KeyF23}]

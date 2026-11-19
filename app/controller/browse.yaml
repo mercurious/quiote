@@ -1,0 +1,73 @@
+# Quiote controller layout for pages that don't read the gamepad: the right
+# stick drives the pointer, the buttons send the browser's own shortcuts.
+# Home leaves Quiote (F23 -> Sway -> exit.sh).
+version: 1
+kind: DeviceProfile
+name: Quiote browse
+description: Pointer, history, reload and zoom on a handheld
+
+target_devices:
+  - mouse
+  - keyboard
+
+mapping:
+  - name: Pointer
+    source_event: {gamepad: {axis: {name: RightStick}}}
+    target_events: [{mouse: {motion: {speed_pps: 800}}}]
+  - name: Click
+    source_event: {gamepad: {button: South}}
+    target_events: [{mouse: {button: Left}}]
+  - name: Click (trigger)
+    source_event: {gamepad: {trigger: {name: RightTrigger, deadzone: 0.25}}}
+    target_events: [{mouse: {button: Left}}]
+  - name: Context menu
+    source_event: {gamepad: {trigger: {name: LeftTrigger, deadzone: 0.25}}}
+    target_events: [{mouse: {button: Right}}]
+  - name: Back
+    source_event: {gamepad: {button: East}}
+    target_events: [{keyboard: KeyLeftAlt}, {keyboard: KeyLeft}]
+  - name: Reload
+    source_event: {gamepad: {button: West}}
+    target_events: [{keyboard: KeyF5}]
+  - name: Forward
+    source_event: {gamepad: {button: North}}
+    target_events: [{keyboard: KeyLeftAlt}, {keyboard: KeyRight}]
+  - name: Enter
+    source_event: {gamepad: {button: Start}}
+    target_events: [{keyboard: KeyEnter}]
+  - name: Full screen
+    source_event: {gamepad: {button: Select}}
+    target_events: [{keyboard: KeyF11}]
+  - name: Previous tab
+    source_event: {gamepad: {button: LeftBumper}}
+    target_events: [{keyboard: KeyLeftCtrl}, {keyboard: KeyPageUp}]
+  - name: Next tab
+    source_event: {gamepad: {button: RightBumper}}
+    target_events: [{keyboard: KeyLeftCtrl}, {keyboard: KeyPageDown}]
+  - name: Zoom out
+    source_event: {gamepad: {button: LeftStick}}
+    target_events: [{keyboard: KeyLeftCtrl}, {keyboard: KeyMinus}]
+  - name: Zoom in
+    source_event: {gamepad: {button: RightStick}}
+    target_events: [{keyboard: KeyLeftCtrl}, {keyboard: KeyEqual}]
+  - name: Exit Quiote (F23 -> Sway -> exit.sh)
+    source_event: {gamepad: {button: Guide}}
+    target_events: [{keyboard: KeyF23}]
+  - name: Up
+    source_event: {gamepad: {button: DPadUp}}
+    target_events: [{keyboard: KeyUp}]
+  - name: Down
+    source_event: {gamepad: {button: DPadDown}}
+    target_events: [{keyboard: KeyDown}]
+  - name: Left
+    source_event: {gamepad: {button: DPadLeft}}
+    target_events: [{keyboard: KeyLeft}]
+  - name: Right
+    source_event: {gamepad: {button: DPadRight}}
+    target_events: [{keyboard: KeyRight}]
+  - name: Page up
+    source_event: {gamepad: {axis: {name: LeftStick, direction: up, deadzone: 0.4}}}
+    target_events: [{keyboard: KeyPageUp}]
+  - name: Page down
+    source_event: {gamepad: {axis: {name: LeftStick, direction: down, deadzone: 0.4}}}
+    target_events: [{keyboard: KeyPageDown}]
