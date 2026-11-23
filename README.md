@@ -78,6 +78,7 @@ Portmart puts apps where there is room, so apps find Quiote through that file.
 | `QUIOTE_CONTROLLER=<yaml>` | Sets the InputPlumber profile for the session. Takes a path, or a file in Quiote's `controller/`. `gamepad.yaml` passes the pad through as an Xbox 360 pad, which Chrome reports with the `standard` mapping. Home stays mapped to exit. |
 | `QUIOTE_SCALE=<n>` | Sets the device scale factor (default 1). |
 | `QUIOTE_PORT=<n>` | Sets the port for `--serve` (default 8737). |
+| `QUIOTE_ANGLE=vulkan\|gl` | Sets ANGLE's backend, which runs WebGL and shares canvases with the compositor (default `vulkan`). WebGPU apps need `vulkan` (below). WebGL apps need `gl`: with ANGLE on Vulkan, Turnip never shows a WebGL canvas created with `antialias: true` (the page draws, the screen stays empty). |
 | `QUIOTE_FLAGS="<flags>"` | Adds extra Chrome flags, split on spaces, e.g. `--remote-debugging-port=9222`. |
 
 An app's own `launch.sh`, for a release that unpacks its web build into `web/`:
@@ -100,9 +101,10 @@ In its portmart manifest: `"depends": ["quiote"]`, and a launcher with
 - `--ozone-platform=wayland`
 - `--enable-features=Vulkan`: Dawn, Chrome's WebGPU, uses the Vulkan driver.
   Without it, the only adapter is SwiftShader on the CPU.
-- `--use-angle=vulkan`: the canvas is shared with the compositor through
-  Vulkan. With ANGLE on GL that import fails and the GPU device is lost
-  (Dawn: "Requested allocation size ... is smaller than the image requires").
+- `--use-angle=vulkan` (`QUIOTE_ANGLE`): the canvas is shared with the
+  compositor through Vulkan. With ANGLE on GL that import fails and the GPU
+  device is lost (Dawn: "Requested allocation size ... is smaller than the
+  image requires"). WebGL apps set `QUIOTE_ANGLE=gl`.
 - `--enable-unsafe-webgpu --ignore-gpu-blocklist`: gets past the adapter
   blocklist.
 - `--no-sandbox --test-type`: root is the only user on ROCKNIX, and Chrome's

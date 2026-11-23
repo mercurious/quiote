@@ -17,6 +17,10 @@
 #                             passes the pad through as a standard gamepad)
 #   QUIOTE_SCALE=<n>          device scale factor (default 1)
 #   QUIOTE_PORT=<n>           port for --serve (default 8737)
+#   QUIOTE_ANGLE=vulkan|gl    ANGLE backend for WebGL and canvas (default
+#                             vulkan, which WebGPU needs; gl for WebGL apps:
+#                             on Turnip, antialiased WebGL canvases never
+#                             reach the screen with ANGLE on Vulkan)
 #   QUIOTE_FLAGS="<flags>"    extra Chrome flags, split on spaces
 
 . /etc/profile
@@ -40,6 +44,11 @@ esac
 PORT=${QUIOTE_PORT:-8737}
 case "$PORT" in
   *[!0-9]* | "") echo "Quiote: bad QUIOTE_PORT '$PORT'" >&2; exit 2 ;;
+esac
+ANGLE=${QUIOTE_ANGLE:-vulkan}
+case "$ANGLE" in
+  vulkan | gl) ;;
+  *) echo "Quiote: bad QUIOTE_ANGLE '$ANGLE' (vulkan or gl)" >&2; exit 2 ;;
 esac
 case "${QUIOTE_CONTROLLER:-}" in
   "") PAD_LAYOUT=$APP/controller/browse.yaml ;;
@@ -75,7 +84,7 @@ fi
 mkdir -p "$APP/logs" "$RUN" "$PROFILE"
 exec >>"$LOG" 2>&1
 echo
-echo "== Quiote $(cat "$APP/VERSION" 2>/dev/null) $(date '+%F %T') profile=$PROFILE scale=$SCALE pad=$PAD_LAYOUT serve=${SERVE:-none}"
+echo "== Quiote $(cat "$APP/VERSION" 2>/dev/null) $(date '+%F %T') profile=$PROFILE scale=$SCALE angle=$ANGLE pad=$PAD_LAYOUT serve=${SERVE:-none}"
 
 # Launched from EmulationStation these are already set; over SSH they are
 # not, so find the running session.
@@ -178,13 +187,15 @@ swaymsg -q "workspace $WORKSPACE"
 
 # WebGPU needs Dawn on Vulkan (--enable-features=Vulkan) and ANGLE on Vulkan
 # too: with ANGLE on GL, sharing the canvas with the compositor fails and the
-# GPU device is lost. --enable-unsafe-webgpu gets past the adapter blocklist.
+# GPU device is lost. WebGL apps pick ANGLE on GL instead (QUIOTE_ANGLE): on
+# Vulkan, Turnip never shows antialiased WebGL canvases.
+# --enable-unsafe-webgpu gets past the adapter blocklist.
 # Root is the only user on ROCKNIX, and Chrome's sandbox refuses root;
 # --test-type drops the infobar that --no-sandbox brings.
 # shellcheck disable=SC2086
 "$CHROME" --user-data-dir="$PROFILE" --no-sandbox --test-type \
   --no-first-run --no-default-browser-check --password-store=basic \
-  --ozone-platform=wayland --enable-features=Vulkan --use-angle=vulkan \
+  --ozone-platform=wayland --enable-features=Vulkan --use-angle="$ANGLE" \
   --enable-unsafe-webgpu --ignore-gpu-blocklist \
   --autoplay-policy=no-user-gesture-required \
   --force-device-scale-factor="$SCALE" \
