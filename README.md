@@ -34,14 +34,20 @@ Then in EmulationStation: **Start → Game Settings → Update Gamelists**, and
 does not update itself.
 
 Ports → Quiote opens the WebGPU check page. It names the adapter, lists the
-features WebGPU apps ask for, and keeps a compute pass and a render pass
-running so you can see frames reach the screen. The window title carries the
-verdict too: `Quiote: WebGPU qualcomm adreno-6xx`.
+features WebGPU apps ask for, and runs a compute pass and a render pass on
+particles every frame, with the frame rate, frame times and GPU time beside
+them. It runs with `gamepad.yaml`, so it shows the pad as the Gamepad API
+sees it; press any button first, as the API asks. The sticks move two
+attractors, R2 / L2 pull and push, A sends a shockwave (with rumble), B
+scatters, and the D-pad scales the particle count (16K to 4M) and size, so
+the stats double as a benchmark under live input. Touch moves an attractor
+too. The window title carries the verdict: `Quiote: WebGPU qualcomm
+adreno-6xx`, then ` (pad standard)` once a pad has reached the page.
 
 ## Controls
 
-The default layout (`controller/browse.yaml`) is for pages that don't read
-the gamepad. Apps that do read it bring `gamepad.yaml` (below).
+Other pages get `controller/browse.yaml` by default, a layout for pages that
+don't read the gamepad. Apps that do read it bring `gamepad.yaml` (below).
 
 | Control | Action |
 |---|---|

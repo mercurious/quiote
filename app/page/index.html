@@ -17,46 +17,63 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; }
-  body { font: 400 22px/1.4 "Liberation Sans", "DejaVu Sans", sans-serif; }
+  body { font: 400 22px/1.4 "Liberation Sans", "DejaVu Sans", sans-serif; touch-action: none; }
   body::before {
     content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
-    background: linear-gradient(90deg, rgb(11 13 18 / 0.92) 0, rgb(11 13 18 / 0.75) 640px, rgb(11 13 18 / 0) 900px);
+    background: linear-gradient(90deg, rgb(11 13 18 / 0.94) 0, rgb(11 13 18 / 0.88) 680px, rgb(11 13 18 / 0) 940px);
   }
   ::selection { background: var(--accent); color: var(--bg); }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
   main {
-    position: fixed; z-index: 2; left: 64px; top: 56px; bottom: 56px; width: 640px;
-    display: flex; flex-direction: column; gap: 28px;
+    position: fixed; z-index: 2; left: 64px; top: 56px; bottom: 56px; width: 680px;
+    display: flex; flex-direction: column; gap: 28px; pointer-events: none;
   }
+  header { display: flex; flex-direction: column; gap: 12px; }
   h1 { margin: 0; font-size: 64px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
-  #verdict { margin: 0; font-size: 34px; line-height: 1.2; font-weight: 700; text-wrap: balance; }
+  #about { margin: 0; color: var(--soft); font-size: 24px; line-height: 1.3; max-width: 30ch; text-wrap: balance; }
+  #verdict { margin: 12px 0 0; font-size: 34px; line-height: 1.2; font-weight: 700; text-wrap: balance; }
   #verdict.ok { color: var(--ok); }
   #verdict.bad { color: var(--bad); }
   #detail { margin: -16px 0 0; color: var(--soft); max-width: 34ch; }
-  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 8px 28px; }
+  #detail:empty { display: none; }
+  dl { margin: 0; display: grid; grid-template-columns: 6.5em 1fr; gap: 6px 24px; }
   dt { color: var(--soft); }
   dd { margin: 0; font-variant-numeric: tabular-nums; }
   dd.ok { color: var(--ok); }
   dd.no { color: var(--soft); }
-  footer { margin-top: auto; color: var(--soft); font-size: 20px; }
-  footer b { color: var(--ink); font-weight: 700; }
+  dd.hint { color: var(--accent); }
+  #controls { margin-top: auto; font-size: 19px; grid-template-columns: max-content 1fr; gap: 4px 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+  #controls dt { color: var(--ink); font-weight: 700; }
+  #controls dd { color: var(--soft); }
 </style>
 </head>
 <body>
 <canvas id="gpu"></canvas>
 <main>
-  <h1>Quiote</h1>
+  <header>
+    <h1>Quiote</h1>
+    <p id="about">a Chromium runtime for WebGPU on handheld gaming consoles</p>
+  </header>
   <p id="verdict">Looking for a WebGPU adapter</p>
   <p id="detail"></p>
   <dl id="facts"></dl>
-  <footer><b>Home</b> leaves Quiote. Right stick moves the pointer, <b>A</b> clicks.</footer>
+  <dl id="controls">
+    <dt>Sticks</dt><dd>move the two attractors (or touch)</dd>
+    <dt>R2 / L2</dt><dd>pull in / push out</dd>
+    <dt>A / B</dt><dd>shockwave / scatter</dd>
+    <dt>D-pad up / down</dt><dd>more / fewer particles</dd>
+    <dt>D-pad left / right</dt><dd>smaller / bigger particles</dd>
+    <dt>Home</dt><dd>leave Quiote</dd>
+  </dl>
 </main>
 <script type="module">
-// Quiote's start page: finds the WebGPU adapter, then proves it end to end:
-// a compute pass moves 65,536 particles and a render pass draws them to this
-// canvas every frame. The window title carries the verdict for scripts
-// (tools/smoke.sh reads it through Sway): "Quiote: WebGPU <vendor> <arch>"
-// or "Quiote: no WebGPU (<reason>)".
+// Quiote's start page: finds the WebGPU adapter, then proves it end to end
+// and under load. A compute pass moves the particles and a render pass draws
+// them to this canvas every frame; the pad (or touch) steers them, and the
+// D-pad scales the load, so the frame stats double as a visual benchmark.
+// The window title carries the verdict for scripts (tools/smoke.sh reads it
+// through Sway): "Quiote: WebGPU <vendor> <arch>", then " (pad <mapping>)"
+// once a gamepad has reached the page, or "Quiote: no WebGPU (<reason>)".
 const $ = (id) => document.getElementById(id);
 const facts = $('facts');
 const fact = (k, v, cls = '') => {
@@ -65,16 +82,26 @@ const fact = (k, v, cls = '') => {
   facts.append(dt, dd);
   return dd;
 };
+const set = (dd, text, cls = '') => {
+  if (dd.textContent !== text) dd.textContent = text;
+  if (dd.className !== cls) dd.className = cls;
+};
 const fail = (why, detail) => {
   $('verdict').textContent = why; $('verdict').className = 'bad';
   $('detail').textContent = detail;
   document.title = `Quiote: no WebGPU (${why})`;
 };
 
-const N = 65536;
+const COUNTS = [16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304];
+const SIZES = [0.0012, 0.0018, 0.0026, 0.004, 0.006, 0.009]; // half-width, in screen heights
 const shader = /* wgsl */`
 struct P { pos: vec2f, vel: vec2f };
-struct U { time: f32, dt: f32, aspect: f32, pad: f32 };
+struct U {
+  time: f32, dt: f32, aspect: f32, size: f32,
+  a: vec2f, b: vec2f,                  // the attractors
+  pull: f32, push: f32, kick: f32, wave: f32, // wave: seconds since the last shockwave
+  n: u32, gain: f32, _p1: u32, _p2: u32, // gain keeps the additive glow even as the load changes
+};
 @group(0) @binding(0) var<storage, read_write> ps: array<P>;  // compute
 @group(0) @binding(0) var<storage, read> psr: array<P>;       // vertex stage: storage is read-only there
 @group(0) @binding(1) var<uniform> u: U;
@@ -84,31 +111,34 @@ fn hash(n: u32) -> f32 {
   x = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
   return f32((x >> 22u) ^ x) / 4294967295.0;
 }
+fn spawn(i: u32, salt: u32) -> vec2f {
+  return vec2f((hash(i + salt) * 2.0 - 1.0) * u.aspect, hash(i * 3u + 77777u + salt) * 2.0 - 1.0);
+}
 
+// Positions are in screen-height units: x runs from -aspect to aspect.
+// A zeroed particle (a fresh buffer, or one cleared by scatter) respawns.
 @compute @workgroup_size(256) fn step(@builtin(global_invocation_id) g: vec3u) {
   let i = g.x;
-  if (i >= arrayLength(&ps)) { return; }
+  if (i >= u.n) { return; }
   var p = ps[i];
-  // positions are in screen-height units: x runs from -aspect to aspect
-  let a = u.aspect;
-  if (u.time == 0.0) {
-    p.pos = vec2f((hash(i) * 2.0 - 1.0) * a, hash(i + 77777u) * 2.0 - 1.0);
-    p.vel = vec2f(0.0);
+  if (all(p.pos == vec2f(0.0)) && all(p.vel == vec2f(0.0))) {
+    p.pos = spawn(i, 0u);
   }
-  // a slow swirl around two centres that circle each other, right of the text
-  let mid = vec2f(0.42 * a, 0.0);
-  let off = vec2f(0.38 * cos(u.time * 0.21), 0.30 * sin(u.time * 0.17));
   var f = vec2f(0.0);
   for (var k = 0; k < 2; k++) {
-    let c = mid + select(-off, off, k == 0);
+    let c = select(u.b, u.a, k == 0);
     let d = p.pos - c;
     let r2 = dot(d, d) + 0.02;
-    f += vec2f(-d.y, d.x) * (0.06 / r2) * select(-1.0, 1.0, k == 0) - d * (0.02 / r2);
+    let spin = select(-1.0, 1.0, k == 0);
+    f += vec2f(-d.y, d.x) * (0.06 / r2) * spin - d * ((0.02 + 0.3 * u.pull - 0.4 * u.push) / r2);
+    p.vel += d * (u.kick * 1.2 / (r2 + 0.05));
   }
   p.vel = p.vel * 0.985 + f * u.dt;
+  let speed = length(p.vel);
+  if (speed > 4.0) { p.vel *= 4.0 / speed; }
   p.pos += p.vel * u.dt;
-  if (abs(p.pos.x) > a + 0.1 || abs(p.pos.y) > 1.1) {
-    p.pos = vec2f((hash(i + u32(u.time * 60.0)) * 2.0 - 1.0) * a, hash(i * 3u + 1u) * 2.0 - 1.0);
+  if (abs(p.pos.x) > u.aspect + 0.1 || abs(p.pos.y) > 1.1) {
+    p.pos = spawn(i, u32(u.time * 60.0));
     p.vel = vec2f(0.0);
   }
   ps[i] = p;
@@ -119,25 +149,54 @@ struct V { @builtin(position) pos: vec4f, @location(0) col: vec3f };
   let p = psr[i];
   var corners = array(vec2f(-1, -1), vec2f(1, -1), vec2f(-1, 1), vec2f(1, 1));
   let corner = corners[v];
-  let size = 0.0022;
   var o: V;
-  o.pos = vec4f((p.pos.x + corner.x * size) / u.aspect, p.pos.y + corner.y * size, 0.0, 1.0);
+  o.pos = vec4f((p.pos.x + corner.x * u.size) / u.aspect, p.pos.y + corner.y * u.size, 0.0, 1.0);
   let s = clamp(length(p.vel) * 1.6, 0.0, 1.0);
   o.col = mix(vec3f(0.16, 0.30, 0.55), vec3f(1.0, 0.71, 0.28), s);
   return o;
 }
-@fragment fn fs(i: V) -> @location(0) vec4f { return vec4f(i.col * 0.55, 1.0); }
+@fragment fn fs(i: V) -> @location(0) vec4f { return vec4f(i.col * 0.55 * u.gain, 1.0); }
+
+// The attractors as thin rings, and the shockwave as a ring that spreads
+// from both and fades: one full-screen triangle over the particles.
+struct R { @builtin(position) pos: vec4f, @location(0) q: vec2f };
+@vertex fn rvs(@builtin(vertex_index) v: u32) -> R {
+  let c = vec2f(f32((v << 1u) & 2u), f32(v & 2u)) * 2.0 - 1.0;
+  var o: R;
+  o.pos = vec4f(c, 0.0, 1.0);
+  o.q = vec2f(c.x * u.aspect, c.y);
+  return o;
+}
+@fragment fn rfs(i: R) -> @location(0) vec4f {
+  var glow = 0.0;
+  for (var k = 0; k < 2; k++) {
+    let r = length(i.q - select(u.b, u.a, k == 0));
+    let px = fwidth(r);
+    glow += smoothstep(1.5 * px, 0.0, abs(r - 0.03)) * 0.45;
+    let wr = u.wave * 1.4;
+    glow += smoothstep(3.0 * px, 0.0, abs(r - wr)) * 0.6 * max(0.0, 1.0 - u.wave / 0.6);
+  }
+  return vec4f(vec3f(1.0, 0.71, 0.28) * glow, 1.0);
+}
 `;
+
+// Standard-mapping button indices.
+const BTN = { A: 0, B: 1, L2: 6, R2: 7, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+const NAMES = ['A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'Select', 'Start', 'L3', 'R3', 'up', 'down', 'left', 'right', 'Home'];
+const DEAD = 0.15;
+const dead = (v) => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD));
 
 async function run() {
   if (!navigator.gpu) return fail('This browser has no WebGPU', 'navigator.gpu is missing. Quiote turns WebGPU on with its launch flags; was the page opened some other way?');
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) return fail('No WebGPU adapter', 'Chrome found no usable GPU. Check logs/quiote.log for Vulkan errors.');
   const info = adapter.info || {};
-  if (info.isFallbackAdapter || info.architecture === 'swiftshader') {
+  const software = info.isFallbackAdapter || info.architecture === 'swiftshader';
+  if (software) {
     fail('Software fallback only', `The adapter is ${info.vendor} ${info.architecture}, the CPU renderer. The Vulkan driver did not load.`);
   }
-  const need = ['float32-filterable', 'shader-f16', 'timestamp-query'].filter((f) => adapter.features.has(f));
+  const wanted = ['float32-filterable', 'shader-f16', 'timestamp-query'];
+  const need = wanted.filter((f) => adapter.features.has(f));
   const device = await adapter.requestDevice({ requiredFeatures: need });
   device.lost.then((l) => fail('The GPU device was lost', l.message || String(l.reason)));
 
@@ -151,53 +210,186 @@ async function run() {
   resize(); addEventListener('resize', resize);
   ctx.configure({ device, format, alphaMode: 'opaque' });
 
+  const counts = COUNTS.filter((n) => n * 16 <= device.limits.maxStorageBufferBindingSize);
+  const maxN = counts[counts.length - 1];
   const module = device.createShaderModule({ code: shader });
-  const ps = device.createBuffer({ size: N * 16, usage: GPUBufferUsage.STORAGE });
-  const ub = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const ps = device.createBuffer({ size: maxN * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const ub = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const compute = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'step' } });
+  const additive = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
   const render = device.createRenderPipeline({
     layout: 'auto',
     vertex: { module, entryPoint: 'vs' },
-    fragment: { module, entryPoint: 'fs', targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } } }] },
+    fragment: { module, entryPoint: 'fs', targets: [{ format, blend: additive }] },
     primitive: { topology: 'triangle-strip' },
+  });
+  const rings = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module, entryPoint: 'rvs' },
+    fragment: { module, entryPoint: 'rfs', targets: [{ format, blend: additive }] },
   });
   const entries = [{ binding: 0, resource: { buffer: ps } }, { binding: 1, resource: { buffer: ub } }];
   const cbg = device.createBindGroup({ layout: compute.getBindGroupLayout(0), entries });
   const rbg = device.createBindGroup({ layout: render.getBindGroupLayout(0), entries });
+  const ringBg = device.createBindGroup({ layout: rings.getBindGroupLayout(0), entries: [entries[1]] });
 
-  if (!info.isFallbackAdapter && info.architecture !== 'swiftshader') {
-    $('verdict').textContent = `WebGPU is running on ${info.vendor || 'an unnamed vendor'} ${info.architecture || ''}`.trim();
+  // GPU time per frame, from the start of the compute pass to the end of the
+  // render pass, read back whenever the previous reading has landed.
+  let gpu = null;
+  if (device.features.has('timestamp-query')) {
+    gpu = {
+      set: device.createQuerySet({ type: 'timestamp', count: 2 }),
+      resolve: device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+      read: device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
+      busy: false, sum: 0, count: 0,
+    };
+  }
+
+  if (!software) {
+    $('verdict').textContent = `${info.vendor || 'unnamed vendor'} ${info.architecture || ''}`.trim();
     $('verdict').className = 'ok';
-    $('detail').textContent = 'A compute pass moves 65,536 particles and a render pass draws them, every frame.';
     document.title = `Quiote: WebGPU ${info.vendor} ${info.architecture}`;
   }
-  for (const f of ['float32-filterable', 'shader-f16', 'timestamp-query']) {
-    fact(f, adapter.features.has(f) ? 'yes' : 'no', adapter.features.has(f) ? 'ok' : 'no');
-  }
-  fact('max buffer', `${Math.round(adapter.limits.maxBufferSize / 2 ** 20)} MiB`);
-  fact('max texture', `${adapter.limits.maxTextureDimension2D} px`);
-  const rate = fact('frame', '-');
-  const pads = fact('gamepads', 'none');
+  const fps = fact('fps', '-');
+  const frameMs = fact('frame', '-');
+  const gpuMs = gpu ? fact('gpu', '-') : null;
+  const load = fact('particles', '-');
+  const pads = fact('gamepad', 'press any button', 'hint');
+  const input = fact('input', '-', 'no');
+  const has = wanted.filter((f) => adapter.features.has(f));
+  fact('features', has.length ? has.join(', ') : 'none of ' + wanted.join(', '), has.length ? '' : 'no');
+  fact('limits', `${Math.round(adapter.limits.maxBufferSize / 2 ** 20)} MiB buffer, ${adapter.limits.maxTextureDimension2D} px texture`);
 
-  let t0 = performance.now(), last = t0, frames = 0, acc = 0;
-  const u = new Float32Array(4);
+  let countIdx = counts.indexOf(65536), sizeIdx = 2;
+  const showLoad = () => {
+    const px = Math.max(1, Math.round(SIZES[sizeIdx] * canvas.height));
+    load.textContent = `${counts[countIdx].toLocaleString('en')} at ${px} px`;
+  };
+  showLoad(); addEventListener('resize', showLoad);
+
+  // Two attractors orbit on their own until a stick or a finger takes one;
+  // left alone for a few seconds, it drifts back into the orbit.
+  const att = [{ x: 0, y: 0, idle: 99 }, { x: 0, y: 0, idle: 99 }];
+  const touch = { on: false, x: 0, y: 0 };
+  const toWorld = (e) => {
+    const aspect = innerWidth / innerHeight;
+    touch.x = (e.clientX / innerWidth * 2 - 1) * aspect;
+    touch.y = -(e.clientY / innerHeight * 2 - 1);
+  };
+  addEventListener('pointerdown', (e) => { touch.on = true; toWorld(e); });
+  addEventListener('pointermove', (e) => { if (touch.on) toWorld(e); });
+  addEventListener('pointerup', () => { touch.on = false; });
+  addEventListener('pointercancel', () => { touch.on = false; });
+
+  let padSeen = false, prev = [], wave = 99, kickNext = false, clearNext = false;
+  const press = (pad, i) => pad.buttons[i] && pad.buttons[i].pressed && !prev[i];
+  const readPad = (dt, aspect) => {
+    const pad = [...navigator.getGamepads()].find((p) => p && p.connected);
+    if (!pad) {
+      prev = [];
+      set(pads, 'press any button', 'hint');
+      set(input, '-', 'no');
+      return { pull: 0, push: 0 };
+    }
+    if (!padSeen) {
+      padSeen = true;
+      document.title += ` (pad ${pad.mapping || 'raw'})`;
+    }
+    set(pads, `${pad.id.split('(')[0].trim()}, ${pad.mapping || 'raw'} mapping`);
+    const sticks = [[dead(pad.axes[0] || 0), -dead(pad.axes[1] || 0)], [dead(pad.axes[2] || 0), -dead(pad.axes[3] || 0)]];
+    sticks.forEach(([sx, sy], k) => {
+      if (sx || sy) {
+        const a = att[k];
+        a.idle = 0;
+        a.x = Math.max(-aspect, Math.min(aspect, a.x + sx * 1.8 * dt));
+        a.y = Math.max(-1, Math.min(1, a.y + sy * 1.8 * dt));
+      }
+    });
+    if (press(pad, BTN.A)) {
+      kickNext = true;
+      pad.vibrationActuator?.playEffect('dual-rumble', { duration: 140, strongMagnitude: 0.7, weakMagnitude: 0.4 }).catch(() => {});
+    }
+    if (press(pad, BTN.B)) clearNext = true;
+    if (press(pad, BTN.UP) && countIdx < counts.length - 1) { countIdx++; showLoad(); }
+    if (press(pad, BTN.DOWN) && countIdx > 0) { countIdx--; showLoad(); }
+    if (press(pad, BTN.RIGHT) && sizeIdx < SIZES.length - 1) { sizeIdx++; showLoad(); }
+    if (press(pad, BTN.LEFT) && sizeIdx > 0) { sizeIdx--; showLoad(); }
+    prev = pad.buttons.map((b) => b.pressed);
+
+    const trigger = (i) => { const v = pad.buttons[i]?.value || 0; return v < 0.1 ? 0 : v; };
+    const held = [];
+    pad.buttons.forEach((b, i) => {
+      if (i === BTN.L2 || i === BTN.R2) { if (trigger(i)) held.push(`${NAMES[i]} ${b.value.toFixed(2)}`); }
+      else if (b.pressed) held.push(NAMES[i] || `button ${i}`);
+    });
+    if (sticks[0][0] || sticks[0][1]) held.push('left stick');
+    if (sticks[1][0] || sticks[1][1]) held.push('right stick');
+    set(input, held.length ? held.join(', ') : 'idle', held.length ? '' : 'no');
+    return { pull: trigger(BTN.R2), push: trigger(BTN.L2) };
+  };
+
+  const ubData = new ArrayBuffer(64);
+  const uf = new Float32Array(ubData), uu = new Uint32Array(ubData);
+  let start = performance.now(), last = start, window0 = start, times = [];
   const frame = (now) => {
     const dt = Math.min(0.05, (now - last) / 1000);
+    if (now > last) times.push(now - last);
     last = now;
-    u[0] = frames === 0 ? 0 : (now - t0) / 1000; u[1] = dt; u[2] = canvas.width / canvas.height;
-    device.queue.writeBuffer(ub, 0, u);
+    const t = (now - start) / 1000;
+    const aspect = canvas.width / canvas.height;
+
+    const { pull, push } = readPad(dt, aspect);
+    const mid = [0.42 * aspect, 0];
+    const off = [0.38 * Math.cos(t * 0.21), 0.30 * Math.sin(t * 0.17)];
+    att.forEach((a, k) => {
+      if (k === 0 && touch.on) { a.x = touch.x; a.y = touch.y; a.idle = 0; return; }
+      a.idle += dt;
+      const ox = mid[0] + (k ? -off[0] : off[0]), oy = mid[1] + (k ? -off[1] : off[1]);
+      const ease = a.idle > 3 ? 1 - Math.exp(-dt * Math.min(6, (a.idle - 3) * 2)) : 0;
+      a.x += (ox - a.x) * ease; a.y += (oy - a.y) * ease;
+    });
+    if (kickNext) wave = 0; else wave += dt;
+
+    uf.set([t, dt, aspect, SIZES[sizeIdx], att[0].x, att[0].y, att[1].x, att[1].y, pull, push, kickNext ? 1 : 0, wave]);
+    uu[12] = counts[countIdx];
+    const cover = counts[countIdx] / 65536 * (SIZES[sizeIdx] / SIZES[2]) ** 2;
+    uf[13] = Math.max(0.03, Math.min(1, 1 / cover));
+    kickNext = false;
+    device.queue.writeBuffer(ub, 0, ubData);
+
     const enc = device.createCommandEncoder();
-    const cp = enc.beginComputePass();
-    cp.setPipeline(compute); cp.setBindGroup(0, cbg); cp.dispatchWorkgroups(N / 256); cp.end();
-    const rp = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0.043, g: 0.051, b: 0.071, a: 1 } }] });
-    rp.setPipeline(render); rp.setBindGroup(0, rbg); rp.draw(4, N); rp.end();
+    if (clearNext) { enc.clearBuffer(ps); clearNext = false; }
+    const stamp = gpu && !gpu.busy;
+    const cp = enc.beginComputePass(stamp ? { timestampWrites: { querySet: gpu.set, beginningOfPassWriteIndex: 0 } } : {});
+    cp.setPipeline(compute); cp.setBindGroup(0, cbg); cp.dispatchWorkgroups(Math.ceil(counts[countIdx] / 256)); cp.end();
+    const rp = enc.beginRenderPass({
+      colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0.043, g: 0.051, b: 0.071, a: 1 } }],
+      ...(stamp ? { timestampWrites: { querySet: gpu.set, endOfPassWriteIndex: 1 } } : {}),
+    });
+    rp.setPipeline(render); rp.setBindGroup(0, rbg); rp.draw(4, counts[countIdx]);
+    rp.setPipeline(rings); rp.setBindGroup(0, ringBg); rp.draw(3);
+    rp.end();
+    if (stamp) {
+      enc.resolveQuerySet(gpu.set, 0, 2, gpu.resolve, 0);
+      enc.copyBufferToBuffer(gpu.resolve, 0, gpu.read, 0, 16);
+    }
     device.queue.submit([enc.finish()]);
-    frames++; acc += dt;
-    if (acc >= 1) {
-      rate.textContent = `${(frames / ((now - t0) / 1000)).toFixed(0)} fps at ${canvas.width}×${canvas.height}`;
-      const connected = [...navigator.getGamepads()].filter(Boolean).map((g) => `${g.id.split('(')[0].trim()} (${g.mapping || 'raw'})`);
-      pads.textContent = connected.length ? connected.join(', ') : 'none';
-      acc = 0;
+    if (stamp) {
+      gpu.busy = true;
+      gpu.read.mapAsync(GPUMapMode.READ).then(() => {
+        const [a, b] = new BigInt64Array(gpu.read.getMappedRange());
+        if (b > a) { gpu.sum += Number(b - a) / 1e6; gpu.count++; }
+        gpu.read.unmap();
+        gpu.busy = false;
+      }, () => {});
+    }
+
+    if (now - window0 >= 1000 && times.length) {
+      const avg = times.reduce((s, x) => s + x, 0) / times.length;
+      fps.textContent = `${Math.round(1000 / avg)} at ${canvas.width}×${canvas.height}`;
+      frameMs.textContent = `${avg.toFixed(1)} ms average, ${Math.max(...times).toFixed(1)} ms worst`;
+      if (gpuMs && gpu.count) { gpuMs.textContent = `${(gpu.sum / gpu.count).toFixed(2)} ms per frame`; gpu.sum = 0; gpu.count = 0; }
+      times = []; window0 = now;
     }
     requestAnimationFrame(frame);
   };

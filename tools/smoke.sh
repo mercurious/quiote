@@ -77,7 +77,14 @@ wait_title "Quiote: " 30
 sleep 3
 check_prefix "check page: hardware adapter" "$(window name)" "Quiote: WebGPU qualcomm"
 check "check page: fills the screen" "$(window rect.width)x$(window rect.height)" "$(swaymsg -t get_outputs -r | jq -r '.[0].rect | "\(.width)x\(.height)"')"
-check "check page: browse layout" "$(profile)" "Quiote browse"
+check "check page: gamepad layout" "$(profile)" "Quiote gamepad"
+# The first press makes the pad visible to the page; the page then adds
+# " (pad <mapping>)" to its title.
+chord Gamepad:Button:South
+sleep 1
+chord Gamepad:Button:South
+sleep 1
+check "check page: the pad reaches the page" "$(window name | sed -n 's/.*(pad \(.*\))$/\1/p')" standard
 shot 1-check
 leave "check page"
 

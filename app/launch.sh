@@ -14,7 +14,9 @@
 #   QUIOTE_PROFILE=<name>     own Chrome profile, /storage/.config/quiote/<name>
 #   QUIOTE_CONTROLLER=<yaml>  InputPlumber profile for the session: a path, or
 #                             a file in Quiote's controller/ (gamepad.yaml
-#                             passes the pad through as a standard gamepad)
+#                             passes the pad through as a standard gamepad;
+#                             default browse.yaml, gamepad.yaml for the
+#                             check page)
 #   QUIOTE_SCALE=<n>          device scale factor (default 1)
 #   QUIOTE_PORT=<n>           port for --serve (default 8737)
 #   QUIOTE_ANGLE=vulkan|gl    ANGLE backend for WebGL and canvas (default
@@ -50,8 +52,13 @@ case "$ANGLE" in
   vulkan | gl) ;;
   *) echo "Quiote: bad QUIOTE_ANGLE '$ANGLE' (vulkan or gl)" >&2; exit 2 ;;
 esac
+# The check page reads the pad itself; other pages get the pointer layout.
 case "${QUIOTE_CONTROLLER:-}" in
-  "") PAD_LAYOUT=$APP/controller/browse.yaml ;;
+  "") if [ "$#" -eq 0 ]; then
+        PAD_LAYOUT=$APP/controller/gamepad.yaml
+      else
+        PAD_LAYOUT=$APP/controller/browse.yaml
+      fi ;;
   */*) PAD_LAYOUT=$QUIOTE_CONTROLLER ;;
   *) PAD_LAYOUT=$APP/controller/$QUIOTE_CONTROLLER ;;
 esac
