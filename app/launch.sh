@@ -175,6 +175,22 @@ if [ -n "$SERVE" ]; then
 fi
 [ "$#" -gt 0 ] || set -- "--app=file://$APP/page/index.html"
 
+# Until a page first paints, Chrome's window is white, and its first frame
+# is Chrome's default window size in the top-left corner. --window-size makes
+# the first frame fill the screen, and every --app page opens through
+# page/start.html: black, it goes on to the app once it has painted, and
+# Chrome keeps showing it until the app paints.
+n=$#
+while [ "$n" -gt 0 ]; do
+  a=$1
+  shift
+  case "$a" in
+    --app=?*) a="--app=file://$APP/page/start.html#${a#--app=}" ;;
+  esac
+  set -- "$@" "$a"
+  n=$((n - 1))
+done
+
 # ROCKNIX's global exit chord (L1 + Select + Start) also closes Quiote.
 command -v set_kill >/dev/null && set_kill set "chrome"
 
@@ -184,6 +200,9 @@ swaymsg -q "bindcode --no-repeat $KEY_F23 exec $APP/exit.sh"
 PRIOR_WORKSPACE=$(swaymsg -t get_workspaces -r |
   jq -r '.[] | select(.focused) | .name' | head -n 1)
 swaymsg -q "workspace $WORKSPACE"
+WINDOW_SIZE=$(swaymsg -t get_outputs -r |
+  jq -r '.[] | select(.focused) | "\(.rect.width) \(.rect.height)"' |
+  awk -v s="$SCALE" 'NR == 1 { printf "--window-size=%d,%d", $1 / s, $2 / s }')
 
 # WebGPU needs Dawn on Vulkan (--enable-features=Vulkan) and ANGLE on Vulkan
 # too: with ANGLE on GL, sharing the canvas with the compositor fails and the
@@ -198,7 +217,7 @@ swaymsg -q "workspace $WORKSPACE"
   --ozone-platform=wayland --enable-features=Vulkan --use-angle="$ANGLE" \
   --enable-unsafe-webgpu --ignore-gpu-blocklist \
   --autoplay-policy=no-user-gesture-required \
-  --force-device-scale-factor="$SCALE" \
+  --force-device-scale-factor="$SCALE" $WINDOW_SIZE \
   ${QUIOTE_FLAGS:-} "$@" &
 CHROME_PID=$!
 echo "$CHROME_PID" >"$RUN/chrome.pid"

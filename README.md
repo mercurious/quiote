@@ -66,7 +66,9 @@ closes Quiote. There is no on-screen keyboard: browse in Donkey.
 An app runs Quiote's `launch.sh` with Chrome arguments, usually
 `--app=<url>` (a window with no browser toolbar). Quiote runs one window at a
 time, full screen on its own Sway workspace. While it runs, Chrome's pid is
-in `/run/quiote/chrome.pid`.
+in `/run/quiote/chrome.pid`. An `--app` page opens through Quiote's black
+`page/start.html`, so the screen stays black until the app first paints,
+and every app window has the same Sway `app_id`.
 
 `install.sh` writes Quiote's home to `/storage/.config/quiote/home`.
 Portmart puts apps where there is room, so apps find Quiote through that file.

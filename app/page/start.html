@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quiote</title>
+<style>html { background: #000; }</style>
+<script>
+// launch.sh opens every --app page as start.html#<url>. This black page
+// paints first, then hands over to the app; Chrome keeps showing it until the
+// app paints, so the screen goes from black to the app with no white between.
+const next = location.hash.slice(1);
+if (next) {
+  requestAnimationFrame(() => requestAnimationFrame(() =>
+    setTimeout(() => location.replace(next), 50)));
+}
+</script>
